@@ -17,9 +17,9 @@ public class AntWallpaperService extends WallpaperService
 {
 	public final static String logtag = "Ants";
 	
-	private long cfgDrawInterval = 500;	// msec
-	private int cfgScale = 16;
-	private int cfgIterationsPerInterval = 500;
+	private long cfgDrawInterval = 800;	// msec
+	private int cfgScale = 32;
+	private int cfgIterationsPerInterval = 1;
 
 	public WallpaperService.Engine onCreateEngine()
 	{
@@ -114,11 +114,10 @@ public class AntWallpaperService extends WallpaperService
 								   xOffsetStep, yOffsetStep, 
 								   xPixelOffet, yPixelOffset);
 
-			mPixelOffsetX = (int)(xOffset * backBitmap.getWidth());
+			mPixelOffsetX = (int)(xOffset * backBitmap.getWidth()/2);
 
-			Log.d(logtag, "onOffsetChanged() xo:" + xOffset + " yo:" + yOffset 
-				  + " xos:" + xOffsetStep + " yos:" + yOffsetStep 
-				  + " xpo:" + xPixelOffet + " ypo:" + yPixelOffset);
+			Log.d(logtag, "onOffsetChanged() " + mPixelOffsetX);
+			refreshWallpaper();
 		}
 
 		
@@ -144,11 +143,6 @@ public class AntWallpaperService extends WallpaperService
 		 */
 		public void draw()
 		{
-			Canvas canvas = getSurfaceHolder().lockCanvas();
-			if (canvas == null)
-			{
-				return;
-			}
 
 			Log.d(logtag, "x: " + posX + " y: " + posY + " bw: " + bitmap.getWidth());
 			int color;
@@ -206,6 +200,19 @@ public class AntWallpaperService extends WallpaperService
 				}
 			}
 
+			refreshWallpaper();
+		}
+
+
+		/**
+		 * 
+		 */
+		protected void refreshWallpaper() {
+			Canvas canvas = getSurfaceHolder().lockCanvas();
+			if (canvas == null)
+			{
+				return;
+			}
 			canvas.drawBitmap(backBitmap, 
 					new Rect(mPixelOffsetX, 0, mPixelOffsetX + backBitmap.getWidth()/2 - 1, backBitmap.getHeight()-1), 
 					canvas.getClipBounds(), 
@@ -241,6 +248,7 @@ public class AntWallpaperService extends WallpaperService
 			Log.d(logtag, "surfaceChanged() f: " + format + " w: " + width + " h: " + height);
 			
 			backBitmap = Bitmap.createBitmap(2 * width, height, Bitmap.Config.ARGB_8888);
+			backBitmap.eraseColor(Color.BLACK);
 			backCanvas = new Canvas(backBitmap);
 			
 			mWidth = 2 * width / cfgScale;
@@ -248,6 +256,7 @@ public class AntWallpaperService extends WallpaperService
 			posX = mWidth / 2;
 			posY = mHeight / 2;
 			bitmap = Bitmap.createBitmap(mWidth, mHeight, Bitmap.Config.RGB_565);
+			bitmap.eraseColor(colorNull);
 		}
 
 		/* (non-Javadoc)
