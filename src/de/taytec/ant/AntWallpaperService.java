@@ -1,28 +1,45 @@
 package de.taytec.ant;
 
-import android.graphics.*;
-import android.os.*;
-import android.service.wallpaper.*;
-import android.util.*;
-import android.view.*;
-import javax.security.auth.callback.*;
-import java.util.*;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RadialGradient;
+import android.graphics.Rect;
+import android.graphics.Shader;
+import android.os.Handler;
+import android.service.wallpaper.WallpaperService;
+import android.util.Log;
+import android.view.MotionEvent;
+import android.view.SurfaceHolder;
 
 public class AntWallpaperService extends WallpaperService
 {
+	public final static String logtag = "Ants";
+	
+	private long cfgDrawInterval = 500;	// msec
+	private int cfgScale = 16;
+	private int cfgIterationsPerInterval = 500;
 
 	public WallpaperService.Engine onCreateEngine()
 	{
 		return new AntWallpaperServiceEngine();
 	}
 
+	/**
+	 * @author tay
+	 *
+	 */
+	/**
+	 * @author tay
+	 *
+	 */
 	private class AntWallpaperServiceEngine extends Engine implements SurfaceHolder.Callback
 	{
-		private int scale = 8;
 		private int direction = 0;
 		private Bitmap bitmap;
-		private int width;
-		private int height;
+		private int mWidth;
+		private int mHeight;
 		private int posX;
 		private int posY;
 		private int colorNull = Color.CYAN;
@@ -38,44 +55,38 @@ public class AntWallpaperService extends WallpaperService
 			}
 		};
 
-		private int mPixelOffsetY;
 		private int mPixelOffsetX;
-		private float moffsetY = 0.5f;
-		private float mOffsetX = 0.5f;
+		private Bitmap backBitmap;
+		private Canvas backCanvas;
 
-		private RadialGradient gradient;
-
-		/**
-		 */
-		AntWallpaperServiceEngine()
-		{
-			handler.post(drawRunner);
-			width = getDesiredMinimumWidth() / scale;
-			height = getDesiredMinimumHeight() / scale;
-
-			bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8);
-
-			posX = getDesiredMinimumWidth() / 2;
-			posY = getDesiredMinimumHeight() / 2;
-			
-			
-			gradient = new RadialGradient(scale/2, scale/2, scale, 
-				0xFF000000, 0x00000000, Shader.TileMode.CLAMP);
-				
-			paint.setAntiAlias(true);
-			paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
-			paint.setShader(gradient);
-		}
-
-		/**
+		
+		/* (non-Javadoc)
+		 * @see android.service.wallpaper.WallpaperService.Engine#onCreate(android.view.SurfaceHolder)
 		 */
 		@Override
 		public void onCreate(SurfaceHolder surfaceHolder)
 		{
+			super.onCreate(surfaceHolder);
+			
+			mWidth = getDesiredMinimumWidth() / cfgScale;
+			mHeight = getDesiredMinimumHeight() / cfgScale;
+
+			bitmap = Bitmap.createBitmap(mWidth, mHeight, Bitmap.Config.RGB_565);
+
+			posX = mWidth / 2;
+			posY = mHeight / 2;
+			
+			new RadialGradient(getDesiredMinimumWidth() / 2, getDesiredMinimumHeight() / 2, cfgScale, 
+				0xFF000000, 0x80000000, Shader.TileMode.CLAMP);
+				
 			surfaceHolder.addCallback(this);
+			handler.post(drawRunner);
 		}
 
 
+		/* (non-Javadoc)
+		 * @see android.service.wallpaper.WallpaperService.Engine#onVisibilityChanged(boolean)
+		 */
 		@Override 
 		public void onVisibilityChanged(boolean visible)
 		{ 
@@ -91,6 +102,9 @@ public class AntWallpaperService extends WallpaperService
 		}
 
 
+		/* (non-Javadoc)
+		 * @see android.service.wallpaper.WallpaperService.Engine#onOffsetsChanged(float, float, float, float, int, int)
+		 */
 		@Override
 		public void onOffsetsChanged(float xOffset, float yOffset,
 									 float xOffsetStep, float yOffsetStep,
@@ -100,59 +114,59 @@ public class AntWallpaperService extends WallpaperService
 								   xOffsetStep, yOffsetStep, 
 								   xPixelOffet, yPixelOffset);
 
-			mOffsetX = xOffset;
-			moffsetY = yOffset;
-			mPixelOffsetX = xPixelOffet;
-			mPixelOffsetY = yPixelOffset;
+			mPixelOffsetX = (int)(xOffset * backBitmap.getWidth());
 
-			Log.d("ants", "onOffsetChanged() xo:" + xOffset + " yo:" + yOffset 
+			Log.d(logtag, "onOffsetChanged() xo:" + xOffset + " yo:" + yOffset 
 				  + " xos:" + xOffsetStep + " yos:" + yOffsetStep 
 				  + " xpo:" + xPixelOffet + " ypo:" + yPixelOffset);
 		}
 
 		
-
+		/* (non-Javadoc)
+		 * @see android.service.wallpaper.WallpaperService.Engine#onTouchEvent(android.view.MotionEvent)
+		 */
 		@Override
 		public void onTouchEvent(MotionEvent event)
 		{
 			super.onTouchEvent(event);
-			Log.d("ants", "onTouchEvent() " + event.toString());
 			if (event.getAction() == MotionEvent.ACTION_DOWN)
 			{
-				posX = (int)event.getAxisValue(MotionEvent.AXIS_X) + getDesiredMinimumWidth()/2 + mPixelOffsetX;
-				posY = (int)event.getAxisValue(MotionEvent.AXIS_Y) + getDesiredMinimumHeight()/2 + mPixelOffsetY;
-				Log.d("ants", "Pos x: " + posX + "y: " + posY);
+				posX = (int)(mPixelOffsetX + event.getX()) / cfgScale;
+				posY = (int)event.getY() / cfgScale;
+				Log.d(logtag, "Pos x: " + posX + " y: " + posY);
 			}
 		}
 
 		
 
+		/**
+		 * 
+		 */
 		public void draw()
 		{
-			SurfaceHolder surfaceHolder = getSurfaceHolder();
-			Canvas canvas = surfaceHolder.lockCanvas();
+			Canvas canvas = getSurfaceHolder().lockCanvas();
 			if (canvas == null)
 			{
 				return;
 			}
 
-			Log.d("Ants", "x: " + posX + " y: " + posY);
-			for (int loop = 10; loop > 0; loop --)
+			Log.d(logtag, "x: " + posX + " y: " + posY + " bw: " + bitmap.getWidth());
+			int color;
+			for (int loop = cfgIterationsPerInterval; loop > 0; loop --)
 			{
-				if (bitmap.getPixel(posX/scale, posY/scale) == Color.TRANSPARENT)
+				if (bitmap.getPixel(posX, posY) == colorOne)
 				{
-					paint.setColor(colorOne);
-					bitmap.setPixel(posX/scale, posY/scale, Color.WHITE);
+					color = colorNull;
 					direction ++;
 				}
 				else
 				{
-					paint.setColor(colorNull);
-					bitmap.setPixel(posX/scale, posY/scale, Color.TRANSPARENT);
+					color = colorOne;
 					direction --;
 				}
-		
-				canvas.drawCircle((float)posX, (float)posY, scale/2f, paint);
+				paint.setShader(new RadialGradient(posX * cfgScale, posY * cfgScale, cfgScale, color, Color.TRANSPARENT, Shader.TileMode.CLAMP));
+				bitmap.setPixel(posX, posY, color);
+				backCanvas.drawCircle((float)posX * cfgScale, (float)posY * cfgScale, cfgScale, paint);
 				direction = direction % 4;
 				if (direction < 0)
 				{
@@ -165,19 +179,19 @@ public class AntWallpaperService extends WallpaperService
 						posY --;
 						if (posY < 0)
 						{
-							posY = height - 1;
+							posY = mHeight - 1;
 						}
 						break;
 					case 1:
 						posX ++;
-						if (posX >= width)
+						if (posX >= mWidth)
 						{
 							posX = 0;
 						}
 						break;
 					case 2:
 						posY ++;
-						if (posY >= height)
+						if (posY >= mHeight)
 						{
 							posY = 0;
 						}
@@ -186,18 +200,22 @@ public class AntWallpaperService extends WallpaperService
 						posX --;
 						if (posX < 0)
 						{
-							posX = width - 1;
+							posX = mWidth - 1;
 						}
 						break;
 				}
 			}
 
+			canvas.drawBitmap(backBitmap, 
+					new Rect(mPixelOffsetX, 0, mPixelOffsetX + backBitmap.getWidth()/2 - 1, backBitmap.getHeight()-1), 
+					canvas.getClipBounds(), 
+					null);
 
-			surfaceHolder.unlockCanvasAndPost(canvas);
+			getSurfaceHolder().unlockCanvasAndPost(canvas);
 			handler.removeCallbacks(drawRunner); 
 			if (visible)
 			{ 
-				handler.postDelayed(drawRunner, 1000); 
+				handler.postDelayed(drawRunner, cfgDrawInterval ); 
 			}
 		}
 
@@ -206,16 +224,35 @@ public class AntWallpaperService extends WallpaperService
 		 * methods of interface SurfaceHolder.Callback
 		 */
 
+		/* (non-Javadoc)
+		 * @see android.view.SurfaceHolder.Callback#surfaceCreated(android.view.SurfaceHolder)
+		 */
 		public void surfaceCreated(SurfaceHolder surfaceHolder)
 		{
 			// TODO: Implement this method
 		}
 
-		public void surfaceChanged(SurfaceHolder p1, int p2, int p3, int p4)
+		
+		/* (non-Javadoc)
+		 * @see android.view.SurfaceHolder.Callback#surfaceChanged(android.view.SurfaceHolder, int, int, int)
+		 */
+		public void surfaceChanged(SurfaceHolder surfaceHolder, int format, int width, int height)
 		{
-			// TODO: Implement this method
+			Log.d(logtag, "surfaceChanged() f: " + format + " w: " + width + " h: " + height);
+			
+			backBitmap = Bitmap.createBitmap(2 * width, height, Bitmap.Config.ARGB_8888);
+			backCanvas = new Canvas(backBitmap);
+			
+			mWidth = 2 * width / cfgScale;
+			mHeight = height / cfgScale;
+			posX = mWidth / 2;
+			posY = mHeight / 2;
+			bitmap = Bitmap.createBitmap(mWidth, mHeight, Bitmap.Config.RGB_565);
 		}
 
+		/* (non-Javadoc)
+		 * @see android.view.SurfaceHolder.Callback#surfaceDestroyed(android.view.SurfaceHolder)
+		 */
 		public void surfaceDestroyed(SurfaceHolder p1)
 		{
 			// TODO: Implement this method
