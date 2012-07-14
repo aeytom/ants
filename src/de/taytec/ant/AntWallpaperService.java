@@ -5,6 +5,8 @@ import android.os.*;
 import android.service.wallpaper.*;
 import android.util.*;
 import android.view.*;
+import javax.security.auth.callback.*;
+import java.util.*;
 
 public class AntWallpaperService extends WallpaperService
 {
@@ -14,11 +16,10 @@ public class AntWallpaperService extends WallpaperService
 		return new AntWallpaperServiceEngine();
 	}
 
-
-	private class AntWallpaperServiceEngine extends Engine
+	private class AntWallpaperServiceEngine extends Engine implements SurfaceHolder.Callback
 	{
 		private int scale = 8;
-		private int direction;
+		private int direction = 0;
 		private Bitmap bitmap;
 		private int width;
 		private int height;
@@ -26,6 +27,7 @@ public class AntWallpaperService extends WallpaperService
 		private int posY;
 		private int colorNull = Color.CYAN;
 		private int colorOne = Color.BLUE;
+		private Paint paint = new Paint();
 		private boolean visible = true;
 		private final Handler handler = new Handler(); 
 		private final Runnable drawRunner = new Runnable() { 
@@ -36,11 +38,41 @@ public class AntWallpaperService extends WallpaperService
 			}
 		};
 
+		private int mPixelOffsetY;
+		private int mPixelOffsetX;
+		private float moffsetY = 0.5f;
+		private float mOffsetX = 0.5f;
 
+		private RadialGradient gradient;
 
+		/**
+		 */
 		AntWallpaperServiceEngine()
 		{
 			handler.post(drawRunner);
+			width = getDesiredMinimumWidth() / scale;
+			height = getDesiredMinimumHeight() / scale;
+
+			bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8);
+
+			posX = getDesiredMinimumWidth() / 2;
+			posY = getDesiredMinimumHeight() / 2;
+			
+			
+			gradient = new RadialGradient(scale/2, scale/2, scale, 
+				0xFF000000, 0x00000000, Shader.TileMode.CLAMP);
+				
+			paint.setAntiAlias(true);
+			paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
+			paint.setShader(gradient);
+		}
+
+		/**
+		 */
+		@Override
+		public void onCreate(SurfaceHolder surfaceHolder)
+		{
+			surfaceHolder.addCallback(this);
 		}
 
 
@@ -60,21 +92,6 @@ public class AntWallpaperService extends WallpaperService
 
 
 		@Override
-		public void onCreate(SurfaceHolder surfaceHolder)
-		{
-			direction = 0;
-			width = getDesiredMinimumWidth() / scale;
-			height = getDesiredMinimumHeight() / scale;
-			bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
-			
-			posX = width / 2;
-			posY = width / 2;
-
-			super.onCreate(surfaceHolder);
-		}
-
-
-		@Override
 		public void onOffsetsChanged(float xOffset, float yOffset,
 									 float xOffsetStep, float yOffsetStep,
 									 int xPixelOffet, int yPixelOffset)
@@ -82,42 +99,60 @@ public class AntWallpaperService extends WallpaperService
 			super.onOffsetsChanged(xOffset, yOffset, 
 								   xOffsetStep, yOffsetStep, 
 								   xPixelOffet, yPixelOffset);
-			Log.d("ants", "onOffsetChanged() xo:"+xOffset+" yo:"+yOffset+" xos:"+xOffsetStep+" yos:"+yOffsetStep+" xpo:"+xPixelOffet+" ypo:"+yPixelOffset);
+
+			mOffsetX = xOffset;
+			moffsetY = yOffset;
+			mPixelOffsetX = xPixelOffet;
+			mPixelOffsetY = yPixelOffset;
+
+			Log.d("ants", "onOffsetChanged() xo:" + xOffset + " yo:" + yOffset 
+				  + " xos:" + xOffsetStep + " yos:" + yOffsetStep 
+				  + " xpo:" + xPixelOffet + " ypo:" + yPixelOffset);
 		}
 
+		
 
 		@Override
 		public void onTouchEvent(MotionEvent event)
 		{
 			super.onTouchEvent(event);
 			Log.d("ants", "onTouchEvent() " + event.toString());
+			if (event.getAction() == MotionEvent.ACTION_DOWN)
+			{
+				posX = (int)event.getAxisValue(MotionEvent.AXIS_X) + getDesiredMinimumWidth()/2 + mPixelOffsetX;
+				posY = (int)event.getAxisValue(MotionEvent.AXIS_Y) + getDesiredMinimumHeight()/2 + mPixelOffsetY;
+				Log.d("ants", "Pos x: " + posX + "y: " + posY);
+			}
 		}
 
+		
 
 		public void draw()
 		{
-			int minX = posX, minY = posY, maxX = posX, maxY = posY;
-			
 			SurfaceHolder surfaceHolder = getSurfaceHolder();
 			Canvas canvas = surfaceHolder.lockCanvas();
-			if (canvas.getDensity() == Bitmap.DENSITY_NONE)
+			if (canvas == null)
 			{
-				Log.d("Ants", "set bitmap");
-				canvas.setBitmap(bitmap);
+				return;
 			}
 
+			Log.d("Ants", "x: " + posX + " y: " + posY);
 			for (int loop = 10; loop > 0; loop --)
 			{
-				if (bitmap.getPixel(posX, posY) == colorNull)
+				if (bitmap.getPixel(posX/scale, posY/scale) == Color.TRANSPARENT)
 				{
-					bitmap.setPixel(posX, posY, colorOne);
+					paint.setColor(colorOne);
+					bitmap.setPixel(posX/scale, posY/scale, Color.WHITE);
 					direction ++;
 				}
 				else
 				{
-					bitmap.setPixel(posX, posY, colorNull);
+					paint.setColor(colorNull);
+					bitmap.setPixel(posX/scale, posY/scale, Color.TRANSPARENT);
 					direction --;
 				}
+		
+				canvas.drawCircle((float)posX, (float)posY, scale/2f, paint);
 				direction = direction % 4;
 				if (direction < 0)
 				{
@@ -128,62 +163,36 @@ public class AntWallpaperService extends WallpaperService
 				{
 					case 0:
 						posY --;
-						minY = Math.min(minY, posY);
 						if (posY < 0)
 						{
 							posY = height - 1;
-							minY = 0;
-							maxY = height - 1;
 						}
 						break;
 					case 1:
 						posX ++;
-						maxX = Math.max(maxX,posX);
 						if (posX >= width)
 						{
 							posX = 0;
-							minX = 0;
-							maxX = width - 1;
 						}
 						break;
 					case 2:
 						posY ++;
-						maxY = Math.max(maxY,posY);
 						if (posY >= height)
 						{
 							posY = 0;
-							minY = 0;
-							maxY = height - 1;
 						}
 						break;
 					case 3:
 						posX --;
-						minX = Math.min(minX, posX);
 						if (posX < 0)
 						{
 							posX = width - 1;
-							minX = 0;
-							maxX = width - 1;
 						}
 						break;
 				}
 			}
-			
-			int cWidth = canvas.getWidth();
-			int cHeight = canvas.getHeight();
-			Log.d("Ants", "w:"+cWidth+" h:"+cHeight+" d: "+canvas.getDensity());
-/*	
-			canvas.drawBitmap(bitmap, 
-				null, 
-				new Rect(0, 0, getDesiredMinimumWidth(), getDesiredMinimumHeight()), 
-				null);
-*/
-				/*
-			canvas.drawBitmap(bitmap, 
-							  new Rect(minX,minY,maxX,maxY), 
-							  new Rect(minX*scale, minY*scale, maxX*scale, maxY*scale), 
-							  null);
-			*/
+
+
 			surfaceHolder.unlockCanvasAndPost(canvas);
 			handler.removeCallbacks(drawRunner); 
 			if (visible)
@@ -191,5 +200,26 @@ public class AntWallpaperService extends WallpaperService
 				handler.postDelayed(drawRunner, 1000); 
 			}
 		}
+
+
+		/*
+		 * methods of interface SurfaceHolder.Callback
+		 */
+
+		public void surfaceCreated(SurfaceHolder surfaceHolder)
+		{
+			// TODO: Implement this method
+		}
+
+		public void surfaceChanged(SurfaceHolder p1, int p2, int p3, int p4)
+		{
+			// TODO: Implement this method
+		}
+
+		public void surfaceDestroyed(SurfaceHolder p1)
+		{
+			// TODO: Implement this method
+		}
+
 	}
 }
